@@ -1,0 +1,25 @@
+{
+	"name": "danntech-chatbot",
+	"version": "0.0.0",
+	"private": true,
+	"scripts": {
+		"start": "ng serve",
+		"build:elements": "ng build --configuration production --output-hashing none && cat dist/your-project-name/browser/{runtime,polyfills,main}.js > dist/chatbot-widget.js"
+	},
+	"dependencies": {
+		"@angular/common": "^21.2.10",
+		"@angular/core": "^21.2.10",
+		"@angular/elements": "^21.2.10",
+		"@angular/forms": "^21.2.10",
+		"@angular/platform-browser": "^21.2.10",
+		"@angular/platform-browser-dynamic": "^21.2.10",
+		"@webcomponents/custom-elements": "^1.6.0",
+		"rxjs": "^7.8.2",
+		"zone.js": "^0.16.1"
+	},
+	"devDependencies": {
+		"@angular/compiler-cli": "^21.2.10",
+		"@types/node": "^25.6.0",
+		"typescript": "^6.0.3"
+	}
+}
