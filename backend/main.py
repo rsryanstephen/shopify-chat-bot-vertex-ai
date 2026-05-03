@@ -10,9 +10,9 @@ from typing import Optional
 
 # --- Configuration & Security ---
 # Credentials must be set via GOOGLE_APPLICATION_CREDENTIALS in the environment.
-PROJECT_ID = os.getenv("GCP_PROJECT_ID", "your-project-id")
-LOCATION = os.getenv("GCP_LOCATION", "us-central1")
-DATASTORE_ID = os.getenv("DATASTORE_ID", "your-datastore-id")
+PROJECT_ID = os.getenv("GCP_PROJECT_ID", "danntech-poc")
+LOCATION = os.getenv("GCP_LOCATION", "global")
+DATASTORE_ID = os.getenv("DATASTORE_ID", "poc1")
 
 vertexai.init(project=PROJECT_ID, location=LOCATION)
 
