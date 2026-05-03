@@ -1,4 +1,4 @@
-import { Component, Input, ViewEncapsulation } from '@angular/core';
+import { Component, Input, ViewEncapsulation, OnInit } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 
@@ -8,6 +8,9 @@ import { FormsModule } from '@angular/forms';
   imports: [CommonModule, FormsModule],
   template: `
     <div class="chatbot-wrapper">
+      <div class="chat-header">
+        <button class="reset-btn" (click)="resetChat()" [disabled]="isLoading">New Chat</button>
+      </div>
       <div class="chat-history">
         <div *ngFor="let msg of messages" [class]="'msg-' + msg.role">
           <strong>{{ msg.role === 'user' ? 'You' : 'AI' }}:</strong>
@@ -28,16 +31,18 @@ import { FormsModule } from '@angular/forms';
     .chat-input { display: flex; gap: 8px; }
     .chat-input input { flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
     .chat-input button { padding: 8px 16px; cursor: pointer; }
+    .chat-header { display: flex; justify-content: flex-end; margin-bottom: 8px; }
+    .reset-btn { padding: 4px 12px; cursor: pointer; background: #f5f5f5; border: 1px solid #ccc; border-radius: 4px; font-size: 12px; }
   `],
   encapsulation: ViewEncapsulation.ShadowDom 
 })
-export class ChatComponent {
+export class ChatComponent implements OnInit {
   @Input() pageContext: string = '';
+  @Input() backendUrl: string = 'http://localhost:8000/api/chat';
 
   messages: { role: 'user' | 'ai', content: string }[] = [];
   userInput = '';
   isLoading = false;
-  backendUrl = 'http://localhost:8000/api/chat';
   // Replace: sessionId: string | null = null;
   // With a getter/setter that uses sessionStorage
   get sessionId(): string | null {
@@ -47,12 +52,24 @@ export class ChatComponent {
     if (value) sessionStorage.setItem('chatbot_session_id', value);
   }
 
+  ngOnInit() {
+    const saved = sessionStorage.getItem('chatbot_messages');
+    if (saved) {
+      this.messages = JSON.parse(saved);
+    }
+  }
+
+  private saveMessages() {
+    sessionStorage.setItem('chatbot_messages', JSON.stringify(this.messages));
+  }
+
   async sendMessage() {
     if (!this.userInput.trim()) return;
     const prompt = this.userInput;
     this.messages.push({ role: 'user', content: prompt });
     this.userInput = '';
     this.isLoading = true;
+    this.saveMessages();
 
     const aiMsgIndex = this.messages.push({ role: 'ai', content: '' }) - 1;
 
@@ -100,11 +117,13 @@ export class ChatComponent {
       this.messages[aiMsgIndex].content = 'Error connecting to the server.';
     } finally {
       this.isLoading = false;
+      this.saveMessages();
     }
   }
 
   resetChat() {
     sessionStorage.removeItem('chatbot_session_id');
+    sessionStorage.removeItem('chatbot_messages');
     this.messages = [];
     // This forces the backend to create a brand new conversation resource next time
   }

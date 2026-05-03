@@ -4,7 +4,7 @@ my url looks like this `https://console.cloud.google.com/agent-platform/studio/a
 
 ---
 
-### Agent Response
+### Remote Agent Response
 
 Ah, you are using the newer Agent Platform Studio interface! The URL structure is a bit different there.
 
@@ -16,7 +16,7 @@ You can drop that exact string straight into your SDK initialization code for th
 
 ---
 
-### Our Prompt to Main Agent
+### Our Prompt to Remote Agent
 
 Regarding your first caveat for path B:
 
@@ -26,7 +26,7 @@ We couldn't find the agent ID GUID as you describe above, so we referred to anot
 
 ---
 
-### Agent Response
+### Remote Agent Response
 
 Based on your screenshots and the identified ID from the URL, you are indeed using the **Vertex AI Agent Builder (formerly Search & Conversation)** platform. The ID `agent_1777818986848` is the correct identifier for your specific agent configuration in the `danntech-poc` project.
 
@@ -171,7 +171,7 @@ What changes will be needed to our chat.component.ts (frontend\src\app\chat.comp
 
 ---
 
-### Main Agent Response
+### Remote Agent Response
 
 Your current `chat.component.ts` is already about  **90% of the way there** . It contains the logic to capture a `session_id` and send it back in subsequent requests.
 
@@ -243,3 +243,43 @@ When the user clicks a product on your Shopify store, the browser typically does
 
 * **Current State:** The Angular component re-initializes, `this.sessionId` becomes `null`, and the backend creates a **new** conversation resource in Vertex AI.
 * **With `sessionStorage`:** The Angular component re-initializes, retrieves the long `projects/.../conversations/...` string from the browser, and sends it to the backend. The backend then resumes the **existing** conversation resource, maintaining the user's history and context.
+
+---
+
+### My response to new local agent
+
+Please see the attached conversation with the other agent. Regarding the front end (frontend/src/app/chat.component.ts), can you check whether I've implemented the recommended front-end changes correctly or whether the other agent may have missed something?
+
+---
+
+### New Local Agent's Response
+
+All three recommended changes from the agent conversation are correctly implemented in your `chat.component.ts`:
+
+1. **sessionStorage getter/setter** — correctly replaces a simple class property.
+2. **Streaming session_id capture** — `data.session_id && !this.sessionId` guard is in place.
+3. **`resetChat()` method** — correctly removes the sessionStorage key and clears messages.
+
+**Things the other agent missed:**
+
+* **No UI to trigger `resetChat()`** — The method exists but there's no button in the template to call it. Users have no way to start a new conversation. You likely want to add one, e.g. in the `.chat-input` div or as a header button.
+* **Message history is lost on page navigation** — The `sessionId` survives page refreshes via `sessionStorage`, but `messages` is a plain array that resets when the component re-initializes. On Shopify, when a user navigates between pages, they'll get a blank chat window even though the backend conversation continues. If you want visible history continuity, you'd need to persist `messages` in `sessionStorage` too (or fetch history from the backend).
+* **`backendUrl` is hardcoded to `localhost:8000`** — This will need to point to your Cloud Run URL in production. Consider making it configurable or environment-driven.
+
+---
+
+Please implement what the other agent missed.
+
+---
+
+All changes applied. Here's what was added:
+
+1. **"New Chat" button** — a `reset-btn` in a `.chat-header` div, wired to [resetChat()](vscode-file://vscode-app/c:/Users/ryan.stephen/AppData/Local/Programs/Microsoft%20VS%20Code/034f571df5/resources/app/out/vs/code/electron-browser/workbench/workbench.html) and disabled while loading.
+2. **Message persistence** — [ngOnInit()](vscode-file://vscode-app/c:/Users/ryan.stephen/AppData/Local/Programs/Microsoft%20VS%20Code/034f571df5/resources/app/out/vs/code/electron-browser/workbench/workbench.html) loads messages from [sessionStorage](vscode-file://vscode-app/c:/Users/ryan.stephen/AppData/Local/Programs/Microsoft%20VS%20Code/034f571df5/resources/app/out/vs/code/electron-browser/workbench/workbench.html), and [saveMessages()](vscode-file://vscode-app/c:/Users/ryan.stephen/AppData/Local/Programs/Microsoft%20VS%20Code/034f571df5/resources/app/out/vs/code/electron-browser/workbench/workbench.html) writes them back after the user sends a message and after the AI response completes. [resetChat()](vscode-file://vscode-app/c:/Users/ryan.stephen/AppData/Local/Programs/Microsoft%20VS%20Code/034f571df5/resources/app/out/vs/code/electron-browser/workbench/workbench.html) now also clears `chatbot_messages` from storage.
+3. **Configurable [backendUrl](vscode-file://vscode-app/c:/Users/ryan.stephen/AppData/Local/Programs/Microsoft%20VS%20Code/034f571df5/resources/app/out/vs/code/electron-browser/workbench/workbench.html)** — changed from a plain property to [@Input() backendUrl](vscode-file://vscode-app/c:/Users/ryan.stephen/AppData/Local/Programs/Microsoft%20VS%20Code/034f571df5/resources/app/out/vs/code/electron-browser/workbench/workbench.html), defaulting to `http://localhost:8000/api/chat`. When embedding on Shopify, you can pass your Cloud Run URL: `<app-chatbot-ui backendUrl="https://your-cloud-run-url/api/chat">`.
+
+---
+
+### My new prompt to the remote agent
+
+In `backend\google_example_chatbot_to_vertex_ai.py` I have copied over the code from Google's own chatbot interface with the Vertex AI agent. This is here as an example to show you how Google interacts with its own Vertex AI agent in this context.
