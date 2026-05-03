@@ -1,8 +1,8 @@
 In Bash:
 
-- `export GOOGLE_APPLICATION_CREDENTIALS="/path/to/your/service-account.json"`
+- `export GOOGLE_APPLICATION_CREDENTIALS="~/.ssh/service-account.json"`
 - `uvicorn main:app --reload --port 8000`
-- `ng serve`							
+- `ng serve`
 
 (The server will start on `http://localhost:8000`)
 
