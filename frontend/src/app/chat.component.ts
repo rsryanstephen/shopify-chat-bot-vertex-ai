@@ -38,6 +38,7 @@ export class ChatComponent {
   userInput = '';
   isLoading = false;
   backendUrl = 'http://localhost:8000/api/chat';
+  sessionId: string | null = null;
 
   async sendMessage() {
     if (!this.userInput.trim()) return;
@@ -54,7 +55,8 @@ export class ChatComponent {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           message: prompt,
-          page_context: this.pageContext 
+          page_context: this.pageContext,
+          session_id: this.sessionId
         })
       });
 
@@ -74,7 +76,14 @@ export class ChatComponent {
           for (const line of lines) {
             if (line.startsWith('data: ')) {
               const data = JSON.parse(line.replace('data: ', ''));
-              if (data.text) this.messages[aiMsgIndex].content += data.text;
+              
+              if (data.session_id && !this.sessionId) {
+                this.sessionId = data.session_id; // Save the ID for the next message
+              }
+              
+              if (data.text) {
+                this.messages[aiMsgIndex].content += data.text;
+              }
             }
           }
         }
