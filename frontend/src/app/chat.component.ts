@@ -38,7 +38,14 @@ export class ChatComponent {
   userInput = '';
   isLoading = false;
   backendUrl = 'http://localhost:8000/api/chat';
-  sessionId: string | null = null;
+  // Replace: sessionId: string | null = null;
+  // With a getter/setter that uses sessionStorage
+  get sessionId(): string | null {
+    return sessionStorage.getItem('chatbot_session_id');
+  }
+  set sessionId(value: string | null) {
+    if (value) sessionStorage.setItem('chatbot_session_id', value);
+  }
 
   async sendMessage() {
     if (!this.userInput.trim()) return;
@@ -77,8 +84,9 @@ export class ChatComponent {
             if (line.startsWith('data: ')) {
               const data = JSON.parse(line.replace('data: ', ''));
               
+              // Check if we received the full resource path session ID
               if (data.session_id && !this.sessionId) {
-                this.sessionId = data.session_id; // Save the ID for the next message
+                this.sessionId = data.session_id; 
               }
               
               if (data.text) {
@@ -94,4 +102,11 @@ export class ChatComponent {
       this.isLoading = false;
     }
   }
+
+  resetChat() {
+    sessionStorage.removeItem('chatbot_session_id');
+    this.messages = [];
+    // This forces the backend to create a brand new conversation resource next time
+  }
+
 }

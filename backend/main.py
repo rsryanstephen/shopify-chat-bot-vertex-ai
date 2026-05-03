@@ -6,22 +6,20 @@ from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
-from google.cloud import dialogflowcx_v3 as dialogflow
+from google.cloud import discoveryengine_v1beta as discoveryengine
 
-# --- Configuration & Security ---
-PROJECT_ID = os.getenv("GCP_PROJECT_ID", "your-project-id")
-LOCATION = os.getenv("GCP_LOCATION", "us-central1") # Must match your agent's location
-AGENT_ID = os.getenv("AGENT_ID", "your-agent-uuid-goes-here") 
+# --- Configuration ---
+# Project ID from your IAM screenshot: danntech-poc
+PROJECT_ID = "danntech-poc" 
+LOCATION = "global" # Agent Builder agents are typically 'global'
+AGENT_ID = "agent_1775489512107" 
+DATA_STORE_ID = "poc1" # Needed for the engine path
 
 app = FastAPI()
 
-# Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:4200", 
-        "https://your-store-name.myshopify.com"
-    ],
+    allow_origins=["http://localhost:4200", "*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -30,49 +28,54 @@ app.add_middleware(
 class ChatRequest(BaseModel):
     message: str
     page_context: Optional[str] = None
-    session_id: Optional[str] = None # Added for Agent memory
+    session_id: Optional[str] = None
 
 def talk_to_agent(message: str, page_context: Optional[str] = None, session_id: Optional[str] = None):
-    # Initialize the Dialogflow CX Client
-    # The endpoint must match your agent's location
-    client_options = None
-    if LOCATION != 'global':
-        client_options = {"api_endpoint": f"{LOCATION}-dialogflow.googleapis.com"}
+    client = discoveryengine.ConversationalSearchServiceClient()
+
+    # Define the "Serving Config" which represents your Agent
+    # For Agent Builder, the default config is 'default_config'
+    serving_config = client.serving_config_path(
+        project=PROJECT_ID,
+        location=LOCATION,
+        data_store=DATA_STORE_ID,
+        serving_config="default_config",
+    )
+
+    # Maintain or create a conversation session
+    # Session ID must be in the format: projects/.../locations/.../dataStores/.../conversations/...
+    if not session_id:
+        # Create a new conversation object if no session exists
+        conversation = client.create_conversation(
+            parent=client.data_store_path(PROJECT_ID, LOCATION, DATA_STORE_ID),
+            conversation=discoveryengine.Conversation(),
+        )
+        session_id = conversation.name
     
-    client = dialogflow.SessionsClient(client_options=client_options)
-
-    # Use the provided session ID or create a new one to maintain chat history
-    current_session = session_id or str(uuid.uuid4())
-    session_path = f"projects/{PROJECT_ID}/locations/{LOCATION}/agents/{AGENT_ID}/sessions/{current_session}"
-
-    # Inject Shopify context if present
-    final_message = message
+    # Construct the query with Shopify context
+    user_query = discoveryengine.TextInput(input=message)
     if page_context:
-        final_message = f"[System: User is viewing {page_context}] User says: {message}"
+        user_query.input = f"[Context: User is on {page_context}] {message}"
 
-    # Construct the request
-    text_input = dialogflow.TextInput(text=final_message)
-    query_input = dialogflow.QueryInput(text=text_input, language_code="en")
-    request = dialogflow.DetectIntentRequest(
-        session=session_path,
-        query_input=query_input
+    request = discoveryengine.ConverseConversationRequest(
+        name=session_id,
+        query=discoveryengine.Query(text_input=user_query),
+        serving_config=serving_config,
+        summary_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec(
+            summary_result_count=5,
+            include_citations=True,
+        ),
     )
 
     try:
-        # Call the Vertex AI Agent
-        response = client.detect_intent(request=request)
+        # The DiscoveryEngine Agent currently returns the response in a single block
+        # We wrap it in SSE format to keep your Angular frontend working perfectly
+        response = client.converse_conversation(request)
         
-        # Extract the response text
-        response_text = ""
-        for response_message in response.query_result.response_messages:
-            if response_message.text:
-                response_text += response_message.text.text[0] + "\n"
-
-        # Yield the response in SSE format to maintain frontend compatibility
-        # We also pass back the session_id so the frontend can hold onto it
+        reply_text = response.reply.summary.summary_text
         payload = {
-            "text": response_text.strip(),
-            "session_id": current_session
+            "text": reply_text,
+            "session_id": session_id
         }
         yield f"data: {json.dumps(payload)}\n\n"
 
