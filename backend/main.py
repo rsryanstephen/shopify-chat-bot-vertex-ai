@@ -6,14 +6,17 @@ from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Optional
-from google.cloud import discoveryengine_v1beta as discoveryengine
+from google import genai
+from google.genai import types
 
 # --- Configuration ---
-# Project ID from your IAM screenshot: danntech-poc
-PROJECT_ID = "danntech-poc" 
-LOCATION = "global" # Agent Builder agents are typically 'global'
-AGENT_ID = "agent_1775489512107" 
-DATA_STORE_ID = "poc1" # Needed for the engine path
+PROJECT_ID = "danntech-poc"
+LOCATION = "europe-central2" 
+RAG_CORPUS = "projects/danntech-poc/locations/europe-central2/ragCorpora/4611686018427387904"
+MODEL_NAME = "gemini-3.1-pro-preview"
+
+# Initialize the GenAI Client (Make sure GOOGLE_APPLICATION_CREDENTIALS is set)
+client = genai.Client(vertexai=True, project=PROJECT_ID, location=LOCATION)
 
 app = FastAPI()
 
@@ -30,62 +33,98 @@ class ChatRequest(BaseModel):
     page_context: Optional[str] = None
     session_id: Optional[str] = None
 
-def talk_to_agent(message: str, page_context: Optional[str] = None, session_id: Optional[str] = None):
-    client = discoveryengine.ConversationalSearchServiceClient()
+# In-memory dictionary to hold chat sessions for the demo
+active_sessions = {}
 
-    # Define the "Serving Config" which represents your Agent
-    # For Agent Builder, the default config is 'default_config'
-    serving_config = client.serving_config_path(
-        project=PROJECT_ID,
-        location=LOCATION,
-        data_store=DATA_STORE_ID,
-        serving_config="default_config",
-    )
+# Exact System Instructions from your Google export
+SYSTEM_INSTRUCTIONS = """
+### 1. Role Definition
+You are an expert Electronic Applications Engineer for Danntech, acting as a technical customer service assistant. Your tone is professional, direct, and strictly technical.
 
-    # Maintain or create a conversation session
-    # Session ID must be in the format: projects/.../locations/.../dataStores/.../conversations/...
-    if not session_id:
-        # Create a new conversation object if no session exists
-        conversation = client.create_conversation(
-            parent=client.data_store_path(PROJECT_ID, LOCATION, DATA_STORE_ID),
-            conversation=discoveryengine.Conversation(),
+### 2. Core Principles
+- **Grounding:** You are 100% grounded in the provided context. Every factual claim must be supported by the provided documents.
+- **Information Not Found:** If the answer is not in the provided context, you MUST state: "Information not found in the provided documentation." Do not apologize or speculate.
+- **Precision:** Use precise industry terminology from the documentation. Avoid vague descriptors; use numerical specifications. Preserve exact units and part numbers as they appear in the source.
+- **Synthesis:** Synthesize information from the context to directly answer the question. Do not provide a general summary of the documents.
+
+### 3. Instructions
+#### Conversational Flow
+1.  **Initial Greeting:** On first contact, greet the user with: "Hello, this is the Danntech technical service. To best assist you, please state your technical background: Matric or Engineering Degree."
+2.  **Acknowledge Background:**
+    -   If the user states "Matric" or "grade 12", reply with: "Thank you. Responses will be simplified." Then wait for their question.
+    -   If the user states "Engineering Degree" or similar, reply with: "Thank you. Responses will be provided with full technical detail." Then wait for their question.
+3.  **Answering:** Address the user's technical query according to the Core Principles and Constraints.
+
+#### Formatting
+- **Comparisons:** When asked to compare products, generate a Markdown table with columns for: Model Number, Primary Specification, Key Features, and Application Suitability.
+- **Citations:** Follow every factual claim with a citation to the specific document or source it was retrieved from.
+
+### 4. Constraints
+- **Scope:** Only answer questions related to the electronic components in the provided documentation. For questions about pricing, availability, or lead times, respond with: "For pricing and availability, please contact our sales department."
+- **Clarity:** If a question is ambiguous (e.g., asks for the "best" component), ask for clarification on the key performance metrics.
+- **Persona:** Do not apologize, express opinions, use conversational filler, or break character. Remain concise and direct.
+- **Prohibited Content:** Do not generate creative content, provide advice outside the technical scope (e.g., safety, legal), or engage in off-topic conversation.
+- **Formatting:** Use only plain text, Markdown tables for comparisons, and bolding for part numbers or specifications. Do not use other formatting like headers, lists (unless listing specs from the context), or emojis.
+"""
+
+def get_or_create_chat(session_id: str):
+    """Retrieves an existing chat session or creates a new one configured with tools."""
+    if session_id in active_sessions:
+        return active_sessions[session_id]
+
+    # Configure the RAG Tool
+    tools = [
+        types.Tool(
+            retrieval=types.Retrieval(
+                vertex_rag_store=types.VertexRagStore(
+                    rag_resources=[types.VertexRagStoreRagResource(rag_corpus=RAG_CORPUS)],
+                    similarity_top_k=10,
+                )
+            )
         )
-        session_id = conversation.name
+    ]
     
-    # Construct the query with Shopify context
-    user_query = discoveryengine.TextInput(input=message)
-    if page_context:
-        user_query.input = f"[Context: User is on {page_context}] {message}"
-
-    request = discoveryengine.ConverseConversationRequest(
-        name=session_id,
-        query=discoveryengine.Query(text_input=user_query),
-        serving_config=serving_config,
-        summary_spec=discoveryengine.SearchRequest.ContentSearchSpec.SummarySpec(
-            summary_result_count=5,
-            include_citations=True,
-        ),
+    # Apply Google's exported configuration
+    config = types.GenerateContentConfig(
+        temperature=0.1,
+        top_p=0.1,
+        system_instruction=[types.Part.from_text(text=SYSTEM_INSTRUCTIONS)],
+        tools=tools
     )
+    
+    # Initialize a new stateful chat object
+    chat = client.chats.create(model=MODEL_NAME, config=config)
+    active_sessions[session_id] = chat
+    return chat
+
+def generate_stream(message: str, page_context: Optional[str] = None, session_id: Optional[str] = None):
+    # Assign a new ID if one isn't provided by the frontend
+    current_session_id = session_id or str(uuid.uuid4())
+    chat = get_or_create_chat(current_session_id)
+
+    # Inject Shopify context silently
+    final_prompt = message
+    if page_context:
+        final_prompt = f"[System Context: User is viewing {page_context}] User message: {message}"
 
     try:
-        # The DiscoveryEngine Agent currently returns the response in a single block
-        # We wrap it in SSE format to keep your Angular frontend working perfectly
-        response = client.converse_conversation(request)
+        # Send message to the stateful chat object and stream the response
+        response_stream = chat.send_message_stream(final_prompt)
         
-        reply_text = response.reply.summary.summary_text
-        payload = {
-            "text": reply_text,
-            "session_id": session_id
-        }
-        yield f"data: {json.dumps(payload)}\n\n"
-
+        for chunk in response_stream:
+            if chunk.text:
+                payload = {
+                    "text": chunk.text,
+                    "session_id": current_session_id
+                }
+                yield f"data: {json.dumps(payload)}\n\n"
     except Exception as e:
         yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
 @app.post("/api/chat")
 async def chat_endpoint(request: ChatRequest):
     return StreamingResponse(
-        talk_to_agent(request.message, request.page_context, request.session_id),
+        generate_stream(request.message, request.page_context, request.session_id),
         media_type="text/event-stream"
     )
 
