@@ -29,17 +29,15 @@ import { FormsModule } from '@angular/forms';
     .chat-input input { flex: 1; padding: 8px; border: 1px solid #ccc; border-radius: 4px; }
     .chat-input button { padding: 8px 16px; cursor: pointer; }
   `],
-  // Disable encapsulation so the web component CSS works reliably in host environments
   encapsulation: ViewEncapsulation.ShadowDom 
 })
 export class ChatComponent {
-  // Add an Input property to receive data from Shopify
   @Input() pageContext: string = '';
 
   messages: { role: 'user' | 'ai', content: string }[] = [];
   userInput = '';
   isLoading = false;
-  backendUrl = 'http://localhost:8000/api/chat'; // Update dynamically in production
+  backendUrl = 'http://localhost:8000/api/chat';
 
   async sendMessage() {
     if (!this.userInput.trim()) return;
@@ -56,7 +54,6 @@ export class ChatComponent {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ 
           message: prompt,
-          // Pass the context to the backend
           page_context: this.pageContext 
         })
       });
