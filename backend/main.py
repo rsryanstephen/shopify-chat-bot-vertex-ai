@@ -84,16 +84,30 @@ def get_or_create_chat(session_id: str):
         )
     ]
     
-    # Apply Google's exported configuration
+    # Apply Google's exact exported configuration including Safety & Thinking
     config = types.GenerateContentConfig(
         temperature=0.1,
         top_p=0.1,
+        max_output_tokens=65535,
+        thinking_config=types.ThinkingConfig(
+            thinking_level="LOW",
+        ),
+        safety_settings=[
+            types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_LOW_AND_ABOVE"),
+            types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_LOW_AND_ABOVE"),
+            types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_LOW_AND_ABOVE"),
+            types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_LOW_AND_ABOVE")
+        ],
         system_instruction=[types.Part.from_text(text=SYSTEM_INSTRUCTIONS)],
         tools=tools
     )
     
-    # Initialize a new stateful chat object
-    chat = client.chats.create(model=MODEL_NAME, config=config)
+    # Initialize a new stateful chat object, injecting the few-shot history
+    chat = client.chats.create(
+        model=MODEL_NAME, 
+        config=config,
+        history=FEW_SHOT_HISTORY # This forces the model to read the examples before answering
+    )
     active_sessions[session_id] = chat
     return chat
 
