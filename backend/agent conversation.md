@@ -566,3 +566,308 @@ Google uses these simulated past conversations to "train" the model on exactly h
 To cleanly integrate all this without cluttering `main.py` with 300 lines of few-shot conversation text, I recommend saving the `contents` array from your `Agent Definition.py` into a separate file or referencing it cleanly.
 
 Here is how you must update the `get_or_create_chat` function in your `main.py` to include the Safety Settings, Thinking Config, Max Tokens, and Few-Shot History:
+
+```
+# 1. Update your SYSTEM_INSTRUCTIONS variable at the top of main.py 
+# to match the new si_text1 from Agent Definition.py
+
+# 2. Extract the massive `contents` array from Agent Definition.py and assign it to a variable.
+# (e.g., FEW_SHOT_HISTORY = [ types.Content(role="user", parts=[...]), ... ])
+
+def get_or_create_chat(session_id: str):
+    """Retrieves an existing chat session or creates a new one configured with tools."""
+    if session_id in active_sessions:
+        return active_sessions[session_id]
+
+    # Configure the RAG Tool (Top-K is confirmed as 10)
+    tools = [
+        types.Tool(
+            retrieval=types.Retrieval(
+                vertex_rag_store=types.VertexRagStore(
+                    rag_resources=[types.VertexRagStoreRagResource(rag_corpus=RAG_CORPUS)],
+                    similarity_top_k=10,
+                )
+            )
+        )
+    ]
+  
+    # Apply Google's exact exported configuration including Safety & Thinking
+    config = types.GenerateContentConfig(
+        temperature=0.1,
+        top_p=0.1,
+        max_output_tokens=65535,
+        thinking_config=types.ThinkingConfig(
+            thinking_level="LOW",
+        ),
+        safety_settings=[
+            types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_LOW_AND_ABOVE"),
+            types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_LOW_AND_ABOVE"),
+            types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_LOW_AND_ABOVE"),
+            types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_LOW_AND_ABOVE")
+        ],
+        system_instruction=[types.Part.from_text(text=SYSTEM_INSTRUCTIONS)],
+        tools=tools
+    )
+  
+    # Initialize a new stateful chat object, injecting the few-shot history
+    chat = client.chats.create(
+        model=MODEL_NAME, 
+        config=config,
+        history=FEW_SHOT_HISTORY # This forces the model to read the examples before answering
+    )
+    active_sessions[session_id] = chat
+    return chat
+```
+
+
+With these specific blocks added, your Python FastAPI backend is now a perfect 1:1 replica of the GenAI Studio environment.
+
+Given that injecting those ~20 pre-written message turns into *every single new user chat session* will consistently consume a high amount of input tokens per request, do you want to keep all of them, or should we prune that history down to just the 3-4 most critical examples to save on API costs?
+
+---
+
+## My Prompt
+
+yeah, we definitely want to inject as few pre-written messages into every single prompt as possible. Ideally, we want chat history as something provided as reference, not injected into every prompt, but we'll start with pruning, as you say. I'd like to move to an implementation where we don't inject context into every prompt, but rather have something that the Agent refers to.
+
+---
+
+## Remote agent response
+
+You are completely right to want to reduce the payload size. Injecting 20+ turns of dummy conversation into every single API call is highly inefficient and will rapidly inflate your token costs.
+
+However, I need to be completely candid with you about the architecture of Large Language Models (LLMs) to clarify how we achieve your goal of having the agent "refer" to something.
+
+### The Reality of LLM Memory and "References"
+
+There is a common misconception that an AI can hold a reference document or behavioral guide in a separate, token-free "memory bank."
+
+The reality is that **Gemini, like all LLMs, is fundamentally stateless.** Every time you send a message, the model wakes up with amnesia. It only knows what you send it in that specific API payload.
+
+Therefore, if you want the agent to "refer" to something, it **must** be injected into the prompt as input tokens.
+
+We must separate your context into two distinct buckets:
+
+1. **Factual Knowledge (The "What"):** This is your Danntech product data. We *do not* inject this into the prompt directly. Instead, we use the Vertex RAG API. When a user asks a question, the API searches the Datastore, extracts only the relevant paragraphs, and injects *just those paragraphs* into the prompt. This keeps tokens low.
+2. **Behavioral Guidelines (The "How"):** This includes your formatting rules, tone, and the few-shot examples of how to answer (e.g., how to apologize or how to format a table). You cannot put this in the RAG Datastore, because RAG is for facts, not instructions. This *must* go into the system payload.
+
+### The Strategy: Moving from "History" to "System Instructions"
+
+To prune your setup and achieve a leaner payload, we will eliminate the massive few-shot `history` array completely. Instead, we will extract the *core lessons* from those dummy conversations and distill them into explicit, concise rules within your `SYSTEM_INSTRUCTIONS`.
+
+LLMs (especially Gemini 1.5 Pro) are incredibly smart. They do not need 20 examples of a conversation to understand how to behave if the instructions are well-written.
+
+**Example of Pruning:**
+Instead of passing 4 turns of dummy history just to show the bot how to say it doesn't know something, you simply add one rule to the System Instructions:
+
+* *Rule:* "If the answer is not in the provided documents, output exactly: 'I apologize, but that information is not available in the current documentation.'"
+
+### Updated Backend Implementation
+
+Here is how your `get_or_create_chat` function looks when we strip out the bloated few-shot history and rely purely on a robust system instruction block.
+
+```
+def get_or_create_chat(session_id: str):
+    """Retrieves an existing chat session or creates a new one."""
+    if session_id in active_sessions:
+        return active_sessions[session_id]
+
+    tools = [
+        types.Tool(
+            retrieval=types.Retrieval(
+                vertex_rag_store=types.VertexRagStore(
+                    rag_resources=[types.VertexRagStoreRagResource(rag_corpus=RAG_CORPUS)],
+                    similarity_top_k=10,
+                )
+            )
+        )
+    ]
+  
+    # We rely entirely on the SYSTEM_INSTRUCTIONS to dictate behavior.
+    # We removed the few-shot dummy history completely.
+    config = types.GenerateContentConfig(
+        temperature=0.1,
+        top_p=0.1,
+        max_output_tokens=65535,
+        thinking_config=types.ThinkingConfig(
+            thinking_level="LOW",
+        ),
+        safety_settings=[
+            types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_LOW_AND_ABOVE"),
+            types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_LOW_AND_ABOVE"),
+            types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_LOW_AND_ABOVE"),
+            types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_LOW_AND_ABOVE")
+        ],
+        system_instruction=[types.Part.from_text(text=SYSTEM_INSTRUCTIONS)],
+        tools=tools
+    )
+  
+    # Initialize the chat without the `history` parameter
+    chat = client.chats.create(
+        model=MODEL_NAME, 
+        config=config
+    )
+    active_sessions[session_id] = chat
+    return chat
+```
+
+
+### A Note on Context Caching
+
+If your `SYSTEM_INSTRUCTIONS` eventually grow very large to accommodate complex Danntech engineering rules, Google offers a feature called  **Context Caching** . This allows you to load your massive instruction set onto Google's servers once per hour, and they charge you a drastically reduced rate for those input tokens on every subsequent chat turn.
+
+Now that we have stripped the dummy history out to save tokens, the only "history" the model will maintain is the actual back-and-forth conversation with the live user. Since we are currently storing that live history in a temporary Python dictionary (`active_sessions = {}`), should we look at connecting this to a persistent database like Firestore or Redis so users don't lose their chat history if your server restarts?
+
+---
+
+## My prompt
+
+We already have instructions that are quite concise, optimized, and comprehensive, so we don't want this to duplicate existing instructions. However, I do like the idea of compressing history into system instructions if it adds instructions that are not already there.  I've attached our current optimized system prompt. I've also attached our current main.py
+
+---
+
+## Remote Agent response
+
+Your `Optimized system prompt.md` is excellent. It already executes the exact strategy I was recommending: you have distilled the core behaviors into strict rules and included a highly efficient "One-Shot" example at the bottom (`5. Example Interaction`).
+
+By doing this, you have successfully eliminated the need to inject Google's massive, expensive 20-turn dummy history into your code, while still teaching the model exactly how to greet users, adapt to their technical level, and format its citations.
+
+I have reviewed the dummy history from your previous export against your new optimized prompt. You captured almost everything perfectly. The only missing nuance from the dummy history was the model's ability to output **step-by-step numbered lists** when explaining mechanical procedures (like opening the Eco-Line Signal Converter enclosure). Your current constraints strictly forbid formatting other than bolding and tables.
+
+I have slightly amended the formatting constraint in the code below to explicitly allow numbered lists for sequential steps.
+
+Here is your final, fully integrated `main.py`.
+
+Now that your prompt is highly optimized and securely embedded, the final remaining hurdle before production is that `active_sessions = {}` dictionary. If your Python server restarts, all current website users will lose their conversation history and context. Would you like to see how to quickly replace that dictionary with a persistent database like Redis or Google Cloud Firestore so that chat sessions survive server reboots?
+
+---
+
+## my prompt
+
+I've just noticed that the system prompt is hard coded into main.py. However, these system instructions are already being used by Vertex AI in the background, and I just copied it here from the Google AI Studio for you to see. I believe we have given you the full context of how we are using vertex AI with this chatbot, so I wonder where the confusion has come in.
+
+Remember, this chatbot is interacting with vertex AI. It needn't duplicate the functionality there.
+
+---
+
+## Remote Agent Response
+
+
+Ah, I see exactly where the disconnect is happening! It is a very common point of confusion because Google Cloud has two completely different paradigms for building chatbots, and their naming conventions overlap quite a bit.
+
+The confusion stems from the difference between an **Orchestrated Agent** and a  **Stateless API Model** . Let's clear this up so you know exactly why the code looks the way it does.
+
+### The Two Paradigms of Vertex AI
+
+**1. Vertex AI Agent Builder (The "Background" Paradigm)**
+If you build a chatbot using the Agent Builder (Dialogflow CX / Discovery Engine), Google's servers act as a persistent host. You type your system instructions into the UI, click "Save," and Google handles everything in the background. Your Python code just says, "Hey Google, send this user message to Agent ID 123," and Google applies your saved instructions automatically. *(This was the "Path B" we tried earlier).*
+
+**2. Vertex AI GenAI Studio (Your Current Paradigm)**
+Based on the screenshots and code exports you provided, you are using the GenAI Studio to connect to the raw `gemini-3.1-pro-preview` model and attaching a RAG Corpus to it.
+
+Here is the critical detail: **The GenAI Studio is essentially just a playground or a sandbox.** When you type system instructions into the GenAI Studio UI, Vertex AI does *not* save them to the model in the background. The raw `gemini-3.1-pro-preview` model is entirely stateless—it wakes up with total amnesia for every single API call.
+
+If you look closely at the `google_example_chatbot_to_vertex_ai.py` and `Agent Definition.py` files you exported from Google, you will notice that **Google's own code hardcodes the system instructions into a variable** (like `si_text1`) and injects them into the API request.
+
+### Why We Are Not Duplicating Functionality
+
+By putting the `SYSTEM_INSTRUCTIONS` into `main.py`, we are not duplicating what Vertex AI is doing; we are providing the mandatory payload that the raw API requires to function. If we remove the system instructions from your Python code, the model will answer the user's questions blindly, without knowing it is supposed to act as a Danntech Engineer, and without knowing your strict formatting rules.
+
+We have two ways to handle this going forward. We can leave it hardcoded in the Python script (which is the fastest and most standard way for this specific API), or we can add a few lines of code to fetch your "Saved Prompt" dynamically from your Google Cloud project using its resource ID every time the server starts.
+
+Would you prefer the simplicity and speed of keeping the instructions in the code, or would you like the flexibility of fetching the prompt dynamically so you can update it in the Google UI without editing `main.py`?
+
+---
+
+## My prompt
+
+At the moment, my priority is the most context-efficient approach to minimize token usage and optimize performance. Which path do you think I should take?
+
+---
+
+## Remote agent response
+
+To achieve the absolute highest performance and the lowest possible token usage, you should choose the path of **keeping your optimized system prompt hardcoded (or loaded via an environment variable) directly within your Python backend code.** By sticking with the stateless GenAI Studio API approach we just finalized in `main.py` and utilizing your pruned, high-efficiency prompt, you have already built the most optimized version possible for this architecture.
+
+Here is an architectural breakdown of why this specific path is the most context-efficient and performant choice for your Shopify demo.
+
+### 1. Token Efficiency: Absolute Minimalism
+
+By throwing away Google's 20-turn few-shot history and replacing it with your concise `Optimized system prompt.md`, you have already won the token optimization battle.
+
+* **The API Reality:** When you use the raw GenAI Studio API, your exact token payload per request is strictly calculated as:
+  $$
+  \text{Total Tokens} = \text{Concise System Prompt} + \text{Live Chat History} + \text{RAG Context Documents} + \text{User Query}
+  $$
+* **Compared to Agent Builder:** Managed platforms (like the Agent Builder UI) inject hidden orchestration metadata, routing playbooks, and state-tracking schemas behind the scenes. By using the lean `google-genai` SDK instead, you avoid paying a "platform token tax" on every message.
+
+### 2. Performance: Zero Latency Overhead
+
+In a web environment like Shopify, speed is directly tied to conversion rates. Hardcoding the system instructions ensures maximum execution speed.
+
+* **No Extra Network Hops:** When a user sends a message, your Python backend instantly compiles the payload and fires it to Gemini.
+* **The Alternative Problem:** If you chose the path of dynamically fetching the "Saved Prompt" from Vertex AI at runtime, your server would have to make an initial API call to Google Cloud just to retrieve the text of your prompt, wait for the response, stitch it together, and *then* call Gemini. This introduces a noticeable delay (often 200ms–500ms of extra latency) before the model even begins "thinking."
+
+### Summary of Your Optimized Architecture
+
+The current setup achieves the optimal balance of speed and cost reduction:
+
+```
+[Shopify Frontend] 
+       │  (User Query + Minimal Page Context)
+       ▼
+[FastAPI Backend] ── (Reads Hardcoded Prompt from Memory: 0ms Latency)
+       │
+       ▼  (Single Optimized Payload)
+[Vertex GenAI API] ── (Pulls ONLY Top 10 matching blocks from RAG Corpus)
+       │
+       ▼  (Fast Stream)
+[User Interface]
+```
+
+By keeping the instructions in the code, you ensure that the text is sitting warm in your server's RAM, ready to be dispatched instantly.
+
+Since we have achieved maximum token efficiency on the prompt structure itself, the only variable element left that consumes tokens is the RAG retrieval. Currently, your system is configured to pull the top 10 most similar document chunks (`similarity_top_k=10`) from your RAG Corpus. Depending on how large your individual data chunks are, would you like to look at tuning that number down to 3 or 5 to see if it maintains accuracy while further slicing your per-query token costs?
+
+---
+
+## My Prompt
+
+Let's prioritize accuracy when it comes to rag retrieval.
+
+You also mentioned previously: "the final remaining hurdle before production is that `active_sessions = {}` dictionary. If your Python server restarts, all current website users will lose their conversation history and context. Would you like to see how to quickly replace that dictionary with a persistent database like Redis or Google Cloud Firestore so that chat sessions survive server reboots?"
+
+We won't set up Redis or Google Cloud Firestore hosting just yet, as this is still a POC, but you can put in the configuration for that here so long.
+
+---
+
+## Remote Agent Response
+
+To prioritize accuracy above all else, keeping your **`similarity_top_k=10`** parameter is absolutely the right call. In a precision-critical domain like electronic applications engineering, pulling a wider net of ten historical document context chunks ensures that the model sees cross-references, edge cases, and adjacent tables that a narrower search (like top 3 or 5) would completely miss.
+
+To prepare your proof of concept (POC) for production-grade session persistence without forcing you to set up live cloud databases right now, we can build a **Dual-Mode Persistence Architecture** directly into your `main.py`.
+
+By adding a simple configuration toggle switch (`PERSISTENCE_MODE`), your backend will continue running flawlessly on your local machine using standard server RAM. The moment you are ready to deploy to Google Cloud Run, you simply change that single word to `"firestore"`, and it will immediately transition to reading and writing chat history securely to Google Cloud Firestore.
+
+### The Architecture: How We Persist Stateful GenAI Chats
+
+Because the `gemini-3.1-pro-preview` model is stateless, we handle state by tracking the live back-and-forth chat history array. When a message comes in:
+
+1. The backend pulls the history array from Firestore using the user's `session_id`.
+2. It re-hydrates the Gemini `chat` object with that history.
+3. It sends the new message stream.
+4. Once the stream completes, it serializes the newly updated history back into a clean JSON structure and saves it to Firestore.
+
+### Updated Backend Implementation (`main.py`)
+
+Here is your fully updated, accuracy-optimized backend blueprint containing the dormant Firestore configuration machinery, ready to toggle on demand.
+
+
+### Phase 5: Production Rollout Steps (For Later)
+
+When your POC phase wraps up and you prepare to push to production on Cloud Run, you only need to run these final operational tasks to activate your persistent storage database layer:
+
+1. **Enable the Database:** Go to your Google Cloud Console for the project `danntech-poc`, search for  **Firestore** , and click  **Create Database** . Choose **Native Mode** and select your closest European region.
+2. **Add the Dependency:** Add `google-cloud-firestore` to your backend `requirements.txt` file.
+3. **Grant IAM Permissions:** Ensure the Cloud Run service account has the **Cloud Datastore User** role assigned to it so it can read and write documents automatically without needing a local json credentials key.
+4. **Flip the Switch:** Set your environment variable configuration on Cloud Run to `PERSISTENCE_MODE=firestore`.

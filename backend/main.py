@@ -15,8 +15,18 @@ LOCATION = "europe-central2"
 RAG_CORPUS = "projects/danntech-poc/locations/europe-central2/ragCorpora/4611686018427387904"
 MODEL_NAME = "gemini-3.1-pro-preview"
 
-# Initialize the GenAI Client (Make sure GOOGLE_APPLICATION_CREDENTIALS is set)
+# --- PERSISTENCE TOGGLE ---
+# Set to "memory" for local POC testing. Change to "firestore" for production.
+PERSISTENCE_MODE = os.getenv("PERSISTENCE_MODE", "memory") 
+
+# Initialize the GenAI Client
 client = genai.Client(vertexai=True, project=PROJECT_ID, location=LOCATION)
+
+# Initialize Firestore Client conditionally so local setup runs without errors
+db_client = None
+if PERSISTENCE_MODE == "firestore":
+    from google.cloud import firestore
+    db_client = firestore.Client(project=PROJECT_ID)
 
 app = FastAPI()
 
@@ -33,11 +43,10 @@ class ChatRequest(BaseModel):
     page_context: Optional[str] = None
     session_id: Optional[str] = None
 
-# In-memory dictionary to hold chat sessions for the demo
-active_sessions = {}
+# Local fallback dictionary for POC memory mode
+active_sessions_memory = {}
 
-# The highly optimized system instructions, integrating the few-shot example.
-# (Note: Added 'numbered lists for sequential instructions' to the Formatting constraints)
+# Your precise, optimized system instructions
 SYSTEM_INSTRUCTIONS = """
 ### 1. Role Definition
 You are an expert Electronic Applications Engineer for Danntech, acting as a technical customer service assistant. Your tone is professional and direct, with the level of technical detail adapted to the user's stated background.
@@ -87,12 +96,53 @@ You are an expert Electronic Applications Engineer for Danntech, acting as a tec
 **Assistant:** "The **F-101A** has a rated voltage of **250V** (Source: Datasheet_F-101A.pdf)."
 """
 
-def get_or_create_chat(session_id: str):
-    """Retrieves an existing chat session or creates a new one configured with tools."""
-    if session_id in active_sessions:
-        return active_sessions[session_id]
+def load_chat_history(session_id: str):
+    """Loads and reconstructs the SDK history array depending on selected persistence."""
+    sdk_history = []
+    
+    if PERSISTENCE_MODE == "firestore":
+        doc_ref = db_client.collection("chat_sessions").document(session_id)
+        doc = doc_ref.get()
+        if doc.exists:
+            stored_data = doc.to_dict().get("history", [])
+            # Reconstruct SDK-specific Content objects from flat Firestore data
+            for msg in stored_data:
+                sdk_history.append(
+                    types.Content(
+                        role=msg["role"],
+                        parts=[types.Part.from_text(text=p["text"]) for p in msg["parts"]]
+                    )
+                )
+    else:
+        # Memory mode configuration fallback
+        sdk_history = active_sessions_memory.get(session_id, [])
+        
+    return sdk_history
 
-    # Configure the RAG Tool
+def save_chat_history(session_id: str, chat_object):
+    """Extracts, serializes, and saves the updated history from the live chat object."""
+    # Pull current linear history array from GenAI SDK
+    updated_history = chat_object.get_history()
+    
+    if PERSISTENCE_MODE == "firestore":
+        # Format SDK history into a clean JSON array structure for Firestore readability
+        serialized_history = []
+        for message in updated_history:
+            parts_data = [{"text": part.text} for part in message.parts if part.text]
+            serialized_history.append({
+                "role": message.role,
+                "parts": parts_data
+            })
+            
+        doc_ref = db_client.collection("chat_sessions").document(session_id)
+        doc_ref.set({"history": serialized_history}, merge=True)
+    else:
+        # Memory mode fallback
+        active_sessions_memory[session_id] = updated_history
+
+def get_or_create_chat(session_id: str):
+    """Creates a stateful chat session pre-populated with retrieved historical turns."""
+    # Prioritizing accuracy: similarity_top_k is pinned firmly to 10 context chunks
     tools = [
         types.Tool(
             retrieval=types.Retrieval(
@@ -108,9 +158,7 @@ def get_or_create_chat(session_id: str):
         temperature=0.1,
         top_p=0.1,
         max_output_tokens=65535,
-        thinking_config=types.ThinkingConfig(
-            thinking_level="LOW",
-        ),
+        thinking_config=types.ThinkingConfig(thinking_level="LOW"),
         safety_settings=[
             types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_LOW_AND_ABOVE"),
             types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_LOW_AND_ABOVE"),
@@ -121,12 +169,15 @@ def get_or_create_chat(session_id: str):
         tools=tools
     )
     
-    # Initialize the chat (no bulky history array needed)
+    # Dynamically pull existing conversation trajectory
+    existing_history = load_chat_history(session_id)
+    
+    # Initialize stateful conversation tunnel using the historical context baseline
     chat = client.chats.create(
         model=MODEL_NAME, 
-        config=config
+        config=config,
+        history=existing_history
     )
-    active_sessions[session_id] = chat
     return chat
 
 def generate_stream(message: str, page_context: Optional[str] = None, session_id: Optional[str] = None):
@@ -139,7 +190,6 @@ def generate_stream(message: str, page_context: Optional[str] = None, session_id
 
     try:
         response_stream = chat.send_message_stream(final_prompt)
-        
         for chunk in response_stream:
             if chunk.text:
                 payload = {
@@ -147,6 +197,10 @@ def generate_stream(message: str, page_context: Optional[str] = None, session_id
                     "session_id": current_session_id
                 }
                 yield f"data: {json.dumps(payload)}\n\n"
+        
+        # Stream has successfully finished generating. Commit the fresh turns to storage.
+        save_chat_history(current_session_id, chat)
+                
     except Exception as e:
         yield f"data: {json.dumps({'error': str(e)})}\n\n"
 
