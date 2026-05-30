@@ -84,7 +84,8 @@ def get_or_create_chat(session_id: str):
         )
     ]
     
-    # Apply Google's exact exported configuration including Safety & Thinking
+    # We rely entirely on the SYSTEM_INSTRUCTIONS to dictate behavior.
+    # We removed the few-shot dummy history completely.
     config = types.GenerateContentConfig(
         temperature=0.1,
         top_p=0.1,
@@ -102,11 +103,10 @@ def get_or_create_chat(session_id: str):
         tools=tools
     )
     
-    # Initialize a new stateful chat object, injecting the few-shot history
+    # Initialize the chat without the `history` parameter
     chat = client.chats.create(
         model=MODEL_NAME, 
-        config=config,
-        history=FEW_SHOT_HISTORY # This forces the model to read the examples before answering
+        config=config
     )
     active_sessions[session_id] = chat
     return chat
