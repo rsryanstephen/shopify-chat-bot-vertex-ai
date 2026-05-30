@@ -16,17 +16,19 @@ RAG_CORPUS = "projects/danntech-poc/locations/europe-central2/ragCorpora/4611686
 MODEL_NAME = "gemini-3.1-pro-preview"
 
 # --- PERSISTENCE TOGGLE ---
-# Set to "memory" for local POC testing. Change to "firestore" for production.
-PERSISTENCE_MODE = os.getenv("PERSISTENCE_MODE", "memory") 
+# Flip this from "memory" to "firestore" to activate your database immediately!
+# If no environment variable is configured, then default to "firestore". 
+PERSISTENCE_MODE = os.getenv("PERSISTENCE_MODE", "firestore") 
 
 # Initialize the GenAI Client
 client = genai.Client(vertexai=True, project=PROJECT_ID, location=LOCATION)
 
-# Initialize Firestore Client conditionally so local setup runs without errors
+# Initialize Firestore Client targeting your custom database instance
 db_client = None
 if PERSISTENCE_MODE == "firestore":
     from google.cloud import firestore
-    db_client = firestore.Client(project=PROJECT_ID)
+    # CRITICAL: We pass database="poc1" to match your specific Cloud setup
+    db_client = firestore.Client(project=PROJECT_ID, database="poc1")
 
 app = FastAPI()
 

@@ -871,3 +871,90 @@ When your POC phase wraps up and you prepare to push to production on Cloud Run,
 2. **Add the Dependency:** Add `google-cloud-firestore` to your backend `requirements.txt` file.
 3. **Grant IAM Permissions:** Ensure the Cloud Run service account has the **Cloud Datastore User** role assigned to it so it can read and write documents automatically without needing a local json credentials key.
 4. **Flip the Switch:** Set your environment variable configuration on Cloud Run to `PERSISTENCE_MODE=firestore`.
+
+---
+
+## My prompt
+
+Given that you had to make changes to the system prompt for formatting reasons, can you please return to me the updated Optimize System prompt in a markdown file so that we can update it in the AI studio. Please wrap the text of the markdown file so that it doesn't conflict with the display on the browser chat window here. 
+
+---
+
+## Remote Agent Response
+
+Here is the full text of your updated prompt. It includes the adjusted formatting constraint under **Section 4** to explicitly allow numbered lists for step-by-step sequential engineering workflows, without modifying any of your other existing configurations. (Returned markdown saved in `backend\Optimized_System_Prompt_v2.md`)
+
+---
+
+## My prompt
+
+ it looks like we currently do have a Firestore instance available. See the attached screenshot. Does it look like this? Five stories active. Can we use it? Should we hook our chatbot up to it? Will that be quick and easy? What are the implications? 
+
+---
+
+## Remote agent response
+
+Yes, that is exactly what an active, ready-to-use Firestore instance looks like! It is initialized in **Native Mode** and completely ready to start storing data.
+
+However, your screenshot reveals one critical detail that we must catch right now: **Your database is named `poc1`, it is not the standard `(default)` instance.** By default, the Google Cloud client libraries look for a database named `(default)`. Because you created a custom named database instance, we need to pass a specific `database="poc1"` argument into our Python setup, or the code will crash looking for a database that doesn't exist.
+
+### Should we hook the chatbot up to it?
+
+**Yes, absolutely.** Since you already have it provisioned, you should activate it immediately.
+
+Here is a quick breakdown of why this is the right move, along with the real-world implications:
+
+* **The Big Pro (Session Stability):** Right now, if your local Python server restarts, or if you deploy to Cloud Run and the container goes to sleep, the chatbot instantly forgets all active conversations. Moving to Firestore means your chat histories are safely preserved in the cloud.
+* **The Shopify Pro (Multi-page Memory):** When users browse your Shopify store, they cause full page refreshes. While browser `sessionStorage` keeps the `session_id` alive on the frontend, your backend needs a rock-solid place to look up that ID. Firestore makes this seamless.
+* **The Cost Implications:** For a POC, this is virtually  **free** . Google Firestore gives you a free tier of 50,000 reads and 20,000 writes  *per day* . You won't pay a cent for testing.
+
+### Step-by-Step Activation Guide
+
+Hooking it up is incredibly quick because we built the foundation for it in our last step. Here is exactly what you need to do:
+
+#### 1. Install the Python SDK
+
+Run this command in your local backend terminal environment:
+
+```
+pip install google-cloud-firestore
+```
+
+#### 2. Update your `main.py` Configuration
+
+Open your `main.py` and modify the top initialization block. We need to explicitly point it to your `poc1` database instance and flip your persistence toggle from `"memory"` to `"firestore"`.
+
+Change this section of your code:
+
+```
+# --- PERSISTENCE TOGGLE ---
+# Flip this from "memory" to "firestore" to activate your database immediately!
+PERSISTENCE_MODE = os.getenv("PERSISTENCE_MODE", "firestore") 
+
+# Initialize the GenAI Client
+client = genai.Client(vertexai=True, project=PROJECT_ID, location=LOCATION)
+
+# Initialize Firestore Client targeting your custom database instance
+db_client = None
+if PERSISTENCE_MODE == "firestore":
+    from google.cloud import firestore
+    # CRITICAL: We pass database="poc1" to match your specific Cloud setup
+    db_client = firestore.Client(project=PROJECT_ID, database="poc1")
+```
+
+
+#### 3. Verify Service Account Permissions
+
+Your current service account (`728962264546-compute@developer.gserviceaccount.com`) needs authorization to write to this database.
+
+* Navigate to **IAM & Admin > IAM** in your Google Cloud Console.
+* Locate your service account in the list.
+* Click the edit icon (pencil) and ensure it has the **Cloud Datastore User** role assigned. (Firestore uses the Datastore IAM role for access control).
+
+### What happens when you run it?
+
+The moment you send your first message from the Angular UI, your backend will call the Gemini stream. As soon as the stream finishes typing the answer, the backend will automatically create a brand-new collection inside your `poc1` database called `chat_sessions`.
+
+If you refresh your browser window on `image_2e00be.jpg`, you will see the structured JSON conversation history pop up instantly.
+
+Would you like to run a quick test message to verify that your local server can successfully authenticate and write its first entry to the `poc1` instance?
