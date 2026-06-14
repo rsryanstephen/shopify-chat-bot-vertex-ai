@@ -1,11 +1,17 @@
 import os
 import json
 import uuid
+
+# google-auth doesn't expand ~ on Windows; expand it here before auth runs
+_creds = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS", "")
+if _creds.startswith("~"):
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.path.expanduser(_creds)
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, cast
+from google.auth.exceptions import DefaultCredentialsError
 from google import genai
 from google.genai import types
 
@@ -19,6 +25,7 @@ MODEL_NAME = "gemini-3.1-pro-preview"
 # Flip this from "memory" to "firestore" to activate your database immediately!
 # If no environment variable is configured, then default to "firestore". 
 PERSISTENCE_MODE = os.getenv("PERSISTENCE_MODE", "firestore") 
+ACTIVE_PERSISTENCE_MODE = PERSISTENCE_MODE
 
 # Initialize the GenAI Client
 client = genai.Client(vertexai=True, project=PROJECT_ID, location=LOCATION)
@@ -27,8 +34,12 @@ client = genai.Client(vertexai=True, project=PROJECT_ID, location=LOCATION)
 db_client = None
 if PERSISTENCE_MODE == "firestore":
     from google.cloud import firestore
+    from google.cloud.firestore import DocumentSnapshot
     # CRITICAL: We pass database="poc1" to match your specific Cloud setup
-    db_client = firestore.Client(project=PROJECT_ID, database="poc1")
+    try:
+        db_client = firestore.Client(project=PROJECT_ID, database="poc1")
+    except DefaultCredentialsError:
+        ACTIVE_PERSISTENCE_MODE = "memory"
 
 app = FastAPI()
 
@@ -102,11 +113,12 @@ def load_chat_history(session_id: str):
     """Loads and reconstructs the SDK history array depending on selected persistence."""
     sdk_history = []
     
-    if PERSISTENCE_MODE == "firestore":
+    if ACTIVE_PERSISTENCE_MODE == "firestore":
+        assert db_client is not None
         doc_ref = db_client.collection("chat_sessions").document(session_id)
-        doc = doc_ref.get()
+        doc = cast("DocumentSnapshot", doc_ref.get())
         if doc.exists:
-            stored_data = doc.to_dict().get("history", [])
+            stored_data = (doc.to_dict() or {}).get("history", [])
             # Reconstruct SDK-specific Content objects from flat Firestore data
             for msg in stored_data:
                 sdk_history.append(
@@ -126,7 +138,8 @@ def save_chat_history(session_id: str, chat_object):
     # Pull current linear history array from GenAI SDK
     updated_history = chat_object.get_history()
     
-    if PERSISTENCE_MODE == "firestore":
+    if ACTIVE_PERSISTENCE_MODE == "firestore":
+        assert db_client is not None
         # Format SDK history into a clean JSON array structure for Firestore readability
         serialized_history = []
         for message in updated_history:
@@ -160,12 +173,12 @@ def get_or_create_chat(session_id: str):
         temperature=0.1,
         top_p=0.1,
         max_output_tokens=65535,
-        thinking_config=types.ThinkingConfig(thinking_level="LOW"),
+        thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.LOW),
         safety_settings=[
-            types.SafetySetting(category="HARM_CATEGORY_HATE_SPEECH", threshold="BLOCK_LOW_AND_ABOVE"),
-            types.SafetySetting(category="HARM_CATEGORY_DANGEROUS_CONTENT", threshold="BLOCK_LOW_AND_ABOVE"),
-            types.SafetySetting(category="HARM_CATEGORY_SEXUALLY_EXPLICIT", threshold="BLOCK_LOW_AND_ABOVE"),
-            types.SafetySetting(category="HARM_CATEGORY_HARASSMENT", threshold="BLOCK_LOW_AND_ABOVE")
+            types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_HATE_SPEECH, threshold=types.HarmBlockThreshold.BLOCK_LOW_AND_ABOVE),
+            types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold=types.HarmBlockThreshold.BLOCK_LOW_AND_ABOVE),
+            types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT, threshold=types.HarmBlockThreshold.BLOCK_LOW_AND_ABOVE),
+            types.SafetySetting(category=types.HarmCategory.HARM_CATEGORY_HARASSMENT, threshold=types.HarmBlockThreshold.BLOCK_LOW_AND_ABOVE)
         ],
         system_instruction=[types.Part.from_text(text=SYSTEM_INSTRUCTIONS)],
         tools=tools
