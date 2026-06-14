@@ -1,2 +1,9 @@
 node_modules
 archive/
+Agent_Orchestrator
+__pycache__/
+*.pyc
+*.tsbuildinfo
+dist/
+.angular/
+*.pyc.*
