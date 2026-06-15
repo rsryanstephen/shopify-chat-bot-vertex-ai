@@ -17,26 +17,26 @@ from google.genai import types
 
 # --- Configuration ---
 PROJECT_ID = "danntech-poc"
-LOCATION = "europe-central2" 
+LOCATION = "europe-central2" # Keep this for your RAG data location reference
 RAG_CORPUS = "projects/danntech-poc/locations/europe-central2/ragCorpora/4611686018427387904"
 MODEL_NAME = "gemini-3.1-pro-preview"
 
 # --- PERSISTENCE TOGGLE ---
-# Flip this from "memory" to "firestore" to activate your database immediately!
-# If no environment variable is configured, then default to "firestore". 
-PERSISTENCE_MODE = os.getenv("PERSISTENCE_MODE", "firestore") 
+PERSISTENCE_MODE = os.getenv("PERSISTENCE_MODE", "firestore")
 ACTIVE_PERSISTENCE_MODE = PERSISTENCE_MODE
 
 # Initialize the GenAI Client
-client = genai.Client(vertexai=True, project=PROJECT_ID, location=LOCATION)
+# FIX: Direct the model API execution to us-central1 or leave location out completely 
+# so it can access the global/preview model registry.
+client = genai.Client(vertexai=True, project=PROJECT_ID, location="us-central1")
 
 # Initialize Firestore Client targeting your custom database instance
 db_client = None
 if PERSISTENCE_MODE == "firestore":
     from google.cloud import firestore
     from google.cloud.firestore import DocumentSnapshot
-    # CRITICAL: We pass database="poc1" to match your specific Cloud setup
     try:
+        # Keeping database="poc1" as verified from your Firestore Studio
         db_client = firestore.Client(project=PROJECT_ID, database="poc1")
     except DefaultCredentialsError:
         ACTIVE_PERSISTENCE_MODE = "memory"
