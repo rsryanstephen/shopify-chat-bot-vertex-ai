@@ -10,31 +10,84 @@ import { InputAreaComponent } from './input-area/input-area.component';
   standalone: true,
   imports: [CommonModule, FormsModule, SidebarComponent, MessageAreaComponent, InputAreaComponent],
   template: `
-    <div class="app-shell">
-      <app-sidebar [isLoading]="isLoading" (newChat)="resetChat()" [class.open]="sidebarOpen"></app-sidebar>
-      <div class="main-panel">
-        <div class="mobile-header">
-          <button class="hamburger" (click)="sidebarOpen = !sidebarOpen" aria-label="Toggle sidebar">☰</button>
-        </div>
-        <div class="content-col">
-          <div class="chat-header"><button class="clear-btn" (click)="resetChat()" [disabled]="isLoading">Clear Chat</button></div>
-          <app-message-area [messages]="messages" [isLoading]="isLoading"></app-message-area>
-          <app-input-area [isLoading]="isLoading" [userInput]="userInput"
-            (userInputChange)="userInput = $event" (send)="sendMessage()"></app-input-area>
+    <ng-container>
+      <button *ngIf="viewMode==='widget' && !widgetOpen" class="widget-fab" (click)="toggleWidget()" aria-label="Open chat">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M12 3C6.48 3 2 6.94 2 11.5c0 2.08.95 3.97 2.5 5.41V21l3.74-2.05c1.16.36 2.42.55 3.76.55 5.52 0 10-3.94 10-8.5S17.52 3 12 3z" fill="currentColor"/>
+        </svg>
+      </button>
+      <div class="app-shell" *ngIf="viewMode==='app' || widgetOpen"
+        [class.widget-mode]="viewMode==='widget'" [class.widget-open]="widgetOpen">
+        <app-sidebar *ngIf="viewMode==='app'" [isLoading]="isLoading" (newChat)="resetChat()" [class.open]="sidebarOpen"></app-sidebar>
+        <button *ngIf="viewMode==='app'" class="mode-switch" (click)="toggleViewMode()" aria-label="Switch to widget mode" title="Switch to widget mode">Widget Mode</button>
+        <div class="main-panel">
+          <div *ngIf="viewMode==='widget'" class="widget-header">
+            <span class="bot-name">Danntech Assistant</span>
+            <span class="status-dot"></span>
+            <span class="status-label">Online</span>
+            <button class="mode-switch-back" (click)="toggleViewMode()" aria-label="Switch to full-screen mode" title="Switch to full-screen mode">⤢</button>
+            <button class="widget-close" (click)="toggleWidget()">✕</button>
+          </div>
+          <div *ngIf="viewMode==='app'" class="mobile-header">
+            <button class="hamburger" (click)="sidebarOpen = !sidebarOpen" aria-label="Toggle sidebar">☰</button>
+          </div>
+          <div class="content-col">
+            <app-message-area [messages]="messages" [isLoading]="isLoading"></app-message-area>
+            <div class="input-row">
+              <button class="clear-btn" (click)="resetChat()" [disabled]="isLoading">Clear Chat</button>
+              <app-input-area [isLoading]="isLoading" [userInput]="userInput"
+                (userInputChange)="userInput = $event" (send)="sendMessage()"></app-input-area>
+            </div>
+          </div>
         </div>
       </div>
-    </div>
+    </ng-container>
   `,
   styles: [`
     :host { display: block; width: 100%; height: 100vh; }
+    .widget-fab {}
+    .widget-header {}
+    .bot-name {}
+    .status-dot {}
+    .status-label {}
+    .widget-close {}
+    .mode-switch {
+      position: fixed; top: 16px; right: 16px; z-index: 30;
+      border: 1px solid #9a9a9f; border-radius: 6px; padding: 5px 14px;
+      font-size: 13px; font-weight: 600; cursor: pointer; color: #3a3a40;
+      background: linear-gradient(180deg, #fdfdfe 0%, #e6e6ea 45%, #c9c9d0 55%, #d8d8de 100%);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 2px rgba(0,0,0,0.25);
+    }
+    .mode-switch:hover { background: linear-gradient(180deg, #ffffff 0%, #ededf1 45%, #d2d2d9 55%, #e0e0e6 100%); }
+    .mode-switch-back { background: none; border: none; font-size: 18px; cursor: pointer; color: inherit; }
     .app-shell { display: flex; height: 100%; background: #f9f9fb; }
     app-sidebar { flex-shrink: 0; }
     .main-panel { flex: 1; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
     .mobile-header { display: none; }
     .hamburger { background: none; border: none; font-size: 22px; cursor: pointer; color: #18181b; }
     .content-col { width: 100%; max-width: 768px; display: flex; flex-direction: column; height: 100%; padding: 0 16px; }
-    .chat-header { display: flex; justify-content: flex-end; padding: 8px 0; }
-    .clear-btn { background: none; border: 1px solid #d4d4d8; border-radius: 6px; padding: 4px 12px; font-size: 13px; cursor: pointer; color: #52525b; }
+    .input-row { display: flex; align-items: flex-end; gap: 8px; }
+    .input-row app-input-area { flex: 1; min-width: 0; }
+    .input-row .clear-btn { flex-shrink: 0; align-self: center; }
+    .clear-btn {
+      border: 1px solid #9a9a9f;
+      border-radius: 6px;
+      padding: 5px 14px;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      color: #3a3a40;
+      background: linear-gradient(180deg, #fdfdfe 0%, #e6e6ea 45%, #c9c9d0 55%, #d8d8de 100%);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -1px 2px rgba(0,0,0,0.15), 0 1px 2px rgba(0,0,0,0.25);
+      text-shadow: 0 1px 0 rgba(255,255,255,0.7);
+      transition: box-shadow 0.1s ease, background 0.1s ease;
+      margin-bottom: 12px;
+    }
+    .clear-btn:hover:not(:disabled) { background: linear-gradient(180deg, #ffffff 0%, #ededf1 45%, #d2d2d9 55%, #e0e0e6 100%); }
+    .clear-btn:active:not(:disabled) {
+      background: linear-gradient(180deg, #c9c9d0 0%, #d8d8de 55%, #e6e6ea 100%);
+      box-shadow: inset 0 2px 3px rgba(0,0,0,0.25), 0 1px 1px rgba(0,0,0,0.15);
+    }
     .clear-btn:disabled { opacity: 0.4; cursor: not-allowed; }
     app-message-area { flex: 1; min-height: 0; }
     @media (max-width: 768px) {
@@ -53,6 +106,13 @@ export class ChatComponent implements OnInit, OnDestroy {
   userInput = '';
   isLoading = false;
   sidebarOpen = false;
+  @Input() viewMode: 'app' | 'widget' = 'app';
+  widgetOpen = false;
+  toggleWidget(): void { this.widgetOpen = !this.widgetOpen; }
+  toggleViewMode(): void {
+    this.viewMode = this.viewMode === 'app' ? 'widget' : 'app';
+    this.widgetOpen = this.viewMode === 'widget';
+  }
   private destroyed = false;
   // Replace: sessionId: string | null = null;
   // With a getter/setter that uses sessionStorage
