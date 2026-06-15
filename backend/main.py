@@ -17,18 +17,18 @@ from google.genai import types
 
 # --- Configuration ---
 PROJECT_ID = "danntech-poc"
-LOCATION = "europe-central2" # Keep this for your RAG data location reference
+# We keep LOCATION for reference, but we will explicitly pass "global" to the client
+LOCATION = "europe-central2" 
 RAG_CORPUS = "projects/danntech-poc/locations/europe-central2/ragCorpora/4611686018427387904"
 MODEL_NAME = "gemini-3.1-pro-preview"
 
 # --- PERSISTENCE TOGGLE ---
-PERSISTENCE_MODE = os.getenv("PERSISTENCE_MODE", "firestore")
-ACTIVE_PERSISTENCE_MODE = PERSISTENCE_MODE
+PERSISTENCE_MODE = os.getenv("PERSISTENCE_MODE", "firestore") 
+ACTIVE_PERSISTENCE_MODE = PERSISTENCE_MODE 
 
 # Initialize the GenAI Client
-# FIX: Direct the model API execution to us-central1 or leave location out completely 
-# so it can access the global/preview model registry.
-client = genai.Client(vertexai=True, project=PROJECT_ID, location="us-central1")
+# FIX: Explicitly set the location to "global" to match the Studio UI and resolve the 404
+client = genai.Client(vertexai=True, project=PROJECT_ID, location="global")
 
 # Initialize Firestore Client targeting your custom database instance
 db_client = None
