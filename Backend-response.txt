@@ -1,2 +1,3 @@
-data: {"error": "404 NOT_FOUND. {'error': {'code': 404, 'message': 'Publisher Model `projects/danntech-poc/locations/us-central1/publishers/google/models/gemini-3.1-pro-preview` was not found or your project does not have access to it. Please ensure you are using a valid model version. For more information, see: https://cloud.google.com/vertex-ai/generative-ai/docs/learn/model-versions', 'status': 'NOT_FOUND'}}"}
+data: {"text": "Hello, this is the Danntech technical service. To best assist you, please state if your background", "session_id": "b91ab5d3-81a4-49e6-abd5-8c550ecd5a49"}
 
+data: {"text": " is Technical (e.g., Engineer, Technician) or Non-Technical (e.g., student, procurement).", "session_id": "b91ab5d3-81a4-49e6-abd5-8c550ecd5a49"}
