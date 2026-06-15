@@ -1,4 +1,4 @@
-import { Component, Input, ViewEncapsulation, OnInit } from '@angular/core';
+import { Component, Input, ViewEncapsulation, OnInit, OnDestroy, ChangeDetectorRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { SidebarComponent } from './sidebar/sidebar.component';
@@ -17,6 +17,7 @@ import { InputAreaComponent } from './input-area/input-area.component';
           <button class="hamburger" (click)="sidebarOpen = !sidebarOpen" aria-label="Toggle sidebar">☰</button>
         </div>
         <div class="content-col">
+          <div class="chat-header"><button class="clear-btn" (click)="resetChat()" [disabled]="isLoading">Clear Chat</button></div>
           <app-message-area [messages]="messages" [isLoading]="isLoading"></app-message-area>
           <app-input-area [isLoading]="isLoading" [userInput]="userInput"
             (userInputChange)="userInput = $event" (send)="sendMessage()"></app-input-area>
@@ -32,6 +33,9 @@ import { InputAreaComponent } from './input-area/input-area.component';
     .mobile-header { display: none; }
     .hamburger { background: none; border: none; font-size: 22px; cursor: pointer; color: #18181b; }
     .content-col { width: 100%; max-width: 768px; display: flex; flex-direction: column; height: 100%; padding: 0 16px; }
+    .chat-header { display: flex; justify-content: flex-end; padding: 8px 0; }
+    .clear-btn { background: none; border: 1px solid #d4d4d8; border-radius: 6px; padding: 4px 12px; font-size: 13px; cursor: pointer; color: #52525b; }
+    .clear-btn:disabled { opacity: 0.4; cursor: not-allowed; }
     app-message-area { flex: 1; min-height: 0; }
     @media (max-width: 768px) {
       app-sidebar { position: absolute; top: 0; left: 0; height: 100%; z-index: 20; transform: translateX(-100%); transition: transform 0.2s ease; }
@@ -41,7 +45,7 @@ import { InputAreaComponent } from './input-area/input-area.component';
   `],
   encapsulation: ViewEncapsulation.ShadowDom
 })
-export class ChatComponent implements OnInit {
+export class ChatComponent implements OnInit, OnDestroy {
   @Input() pageContext: string = '';
   @Input() backendUrl: string = 'http://localhost:8000/api/chat';
 
@@ -49,6 +53,7 @@ export class ChatComponent implements OnInit {
   userInput = '';
   isLoading = false;
   sidebarOpen = false;
+  private destroyed = false;
   // Replace: sessionId: string | null = null;
   // With a getter/setter that uses sessionStorage
   get sessionId(): string | null {
@@ -58,11 +63,17 @@ export class ChatComponent implements OnInit {
     if (value) sessionStorage.setItem('chatbot_session_id', value);
   }
 
+  constructor(private cdr: ChangeDetectorRef) {}
+
   ngOnInit() {
     const saved = sessionStorage.getItem('chatbot_messages');
     if (saved) {
       this.messages = JSON.parse(saved);
     }
+  }
+
+  ngOnDestroy() {
+    this.destroyed = true;
   }
 
   private saveMessages() {
@@ -117,6 +128,7 @@ export class ChatComponent implements OnInit {
               if (data.text) {
                 this.messages[aiMsgIndex].content += data.text;
                 this.messages = [...this.messages];
+                if (!this.destroyed) this.cdr.detectChanges();
               }
             }
           }
@@ -126,6 +138,7 @@ export class ChatComponent implements OnInit {
       this.messages[aiMsgIndex].content = 'Error connecting to the server.';
     } finally {
       this.isLoading = false;
+      if (!this.destroyed) this.cdr.detectChanges();
       this.saveMessages();
     }
   }

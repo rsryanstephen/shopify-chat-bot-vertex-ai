@@ -26,6 +26,7 @@ export class MessageAreaComponent implements AfterViewChecked {
   @ViewChild('scrollEl') scrollEl!: ElementRef;
 
   private atBottom = true;
+  private prevScrollHeight = 0;
 
   onScroll(): void {
     const el = this.scrollEl.nativeElement;
@@ -33,9 +34,10 @@ export class MessageAreaComponent implements AfterViewChecked {
   }
 
   ngAfterViewChecked(): void {
-    if (this.atBottom) {
-      const el = this.scrollEl.nativeElement;
+    const el = this.scrollEl.nativeElement;
+    if (this.atBottom && el.scrollHeight > this.prevScrollHeight) {
       el.scrollTop = el.scrollHeight;
     }
+    this.prevScrollHeight = el.scrollHeight;
   }
 }
