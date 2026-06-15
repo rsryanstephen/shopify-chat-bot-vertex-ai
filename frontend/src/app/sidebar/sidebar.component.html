@@ -1,0 +1,17 @@
+<div class="sidebar">
+  <button class="new-chat-btn" (click)="newChat.emit()" [disabled]="isLoading">
+    <span class="plus-icon">+</span> New Chat
+  </button>
+  <div class="history-section">
+    <h3>Recent Chats</h3>
+    <ul class="chat-list">
+      <li>Getting started with the chatbot</li>
+      <li>How do I reset my password?</li>
+      <li>Pricing and plan comparison details</li>
+    </ul>
+  </div>
+  <div class="sidebar-footer">
+    <span class="avatar"></span>
+    <span>Settings</span>
+  </div>
+</div>
