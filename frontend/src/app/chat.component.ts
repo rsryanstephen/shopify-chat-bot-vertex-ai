@@ -19,7 +19,14 @@ import { InputAreaComponent } from './input-area/input-area.component';
       <div class="app-shell" *ngIf="viewMode==='app' || widgetOpen"
         [class.widget-mode]="viewMode==='widget'" [class.widget-open]="widgetOpen">
         <app-sidebar *ngIf="viewMode==='app'" [isLoading]="isLoading" (newChat)="resetChat()" [class.open]="sidebarOpen"></app-sidebar>
-        <button *ngIf="viewMode==='app'" class="mode-switch" (click)="toggleViewMode()" aria-label="Switch to widget mode" title="Switch to widget mode">Widget Mode</button>
+        <button *ngIf="viewMode==='app'" class="mode-switch" (click)="toggleViewMode()" aria-label="Switch to widget mode" title="Switch to widget mode">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="4" y1="4" x2="10" y2="10"/>
+            <polyline points="10 5 10 10 5 10"/>
+            <line x1="20" y1="20" x2="14" y2="14"/>
+            <polyline points="14 19 14 14 19 14"/>
+          </svg>
+        </button>
         <div class="main-panel">
           <div *ngIf="viewMode==='widget'" class="widget-header">
             <span class="bot-name">Danntech Assistant</span>
@@ -28,13 +35,21 @@ import { InputAreaComponent } from './input-area/input-area.component';
             <button class="mode-switch-back" (click)="toggleViewMode()" aria-label="Switch to full-screen mode" title="Switch to full-screen mode">⤢</button>
             <button class="widget-close" (click)="toggleWidget()">✕</button>
           </div>
+          <div *ngIf="viewMode==='widget'" class="widget-clear-row">
+            <button class="widget-clear-btn" (click)="resetChat()" [disabled]="isLoading" aria-label="Clear chat" title="Clear chat">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              </svg>
+            </button>
+          </div>
           <div *ngIf="viewMode==='app'" class="mobile-header">
             <button class="hamburger" (click)="sidebarOpen = !sidebarOpen" aria-label="Toggle sidebar">☰</button>
           </div>
           <div class="content-col">
             <app-message-area [messages]="messages" [isLoading]="isLoading"></app-message-area>
             <div class="input-row">
-              <button class="clear-btn" (click)="resetChat()" [disabled]="isLoading">Clear Chat</button>
+              <button *ngIf="viewMode==='app'" class="clear-btn" (click)="resetChat()" [disabled]="isLoading">Clear Chat</button>
               <app-input-area [isLoading]="isLoading" [userInput]="userInput"
                 (userInputChange)="userInput = $event" (send)="sendMessage()"></app-input-area>
             </div>
@@ -46,15 +61,39 @@ import { InputAreaComponent } from './input-area/input-area.component';
   styles: [`
     :host { display: block; width: 100%; height: 100vh; }
     .widget-fab {}
-    .widget-header {}
-    .bot-name {}
-    .status-dot {}
-    .status-label {}
-    .widget-close {}
+    .widget-mode {
+      position: fixed;
+      bottom: 90px;
+      right: 24px;
+      width: 380px;
+      height: 600px;
+      max-height: 85vh;
+      max-width: 90vw;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 8px 30px rgba(0,0,0,0.25);
+    }
+    .widget-clear-row { position: absolute; top: 8px; left: 8px; z-index: 5; display: flex; padding: 0; }
+    .widget-clear-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      width: 30px; height: 30px; padding: 0;
+      border: 1px solid #9a9a9f; border-radius: 6px;
+      cursor: pointer; color: #3a3a40;
+      background: linear-gradient(180deg, #fdfdfe 0%, #e6e6ea 45%, #c9c9d0 55%, #d8d8de 100%);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 2px rgba(0,0,0,0.25);
+    }
+    .widget-clear-btn:hover:not(:disabled) { background: linear-gradient(180deg, #ffffff 0%, #ededf1 45%, #d2d2d9 55%, #e0e0e6 100%); }
+    .widget-clear-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .widget-header { display: flex; align-items: center; gap: 8px; padding: 12px 14px; flex-shrink: 0; }
+    .bot-name { font-size: 14px; font-weight: 600; color: #18181b; }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; flex-shrink: 0; }
+    .status-label { font-size: 12px; color: #6b7280; margin-right: auto; }
+    .widget-close { background: none; border: none; font-size: 16px; cursor: pointer; color: #6b7280; padding: 0; }
     .mode-switch {
-      position: fixed; top: 16px; right: 16px; z-index: 30;
-      border: 1px solid #9a9a9f; border-radius: 6px; padding: 5px 14px;
-      font-size: 13px; font-weight: 600; cursor: pointer; color: #3a3a40;
+      position: fixed; top: 16px; right: 16px; z-index: 40;
+      display: inline-flex; align-items: center; justify-content: center;
+      border: 1px solid #9a9a9f; border-radius: 6px; padding: 6px;
+      cursor: pointer; color: #3a3a40;
       background: linear-gradient(180deg, #fdfdfe 0%, #e6e6ea 45%, #c9c9d0 55%, #d8d8de 100%);
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), 0 1px 2px rgba(0,0,0,0.25);
     }
@@ -62,7 +101,7 @@ import { InputAreaComponent } from './input-area/input-area.component';
     .mode-switch-back { background: none; border: none; font-size: 18px; cursor: pointer; color: inherit; }
     .app-shell { display: flex; height: 100%; background: #f9f9fb; }
     app-sidebar { flex-shrink: 0; }
-    .main-panel { flex: 1; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
+    .main-panel { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
     .mobile-header { display: none; }
     .hamburger { background: none; border: none; font-size: 22px; cursor: pointer; color: #18181b; }
     .content-col { width: 100%; max-width: 768px; display: flex; flex-direction: column; height: 100%; padding: 0 16px; }
@@ -93,7 +132,7 @@ import { InputAreaComponent } from './input-area/input-area.component';
     @media (max-width: 768px) {
       app-sidebar { position: absolute; top: 0; left: 0; height: 100%; z-index: 20; transform: translateX(-100%); transition: transform 0.2s ease; }
       app-sidebar.open { transform: translateX(0); }
-      .mobile-header { display: flex; width: 100%; padding: 8px 12px; }
+      .mobile-header { display: flex; width: 100%; padding: 8px 12px; position: relative; z-index: 30; }
     }
   `],
   encapsulation: ViewEncapsulation.ShadowDom
