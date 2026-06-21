@@ -114,6 +114,7 @@ import { InputAreaComponent } from './input-area/input-area.component';
     }
     .app-shell:not(.widget-mode) .content-col { margin-right: 30px; }
     .input-row { display: flex; align-items: flex-end; gap: 8px; }
+    .widget-mode .input-row { margin: 0 8px; }
     .input-row app-input-area { flex: 1; min-width: 0; }
     .input-row .clear-btn { flex-shrink: 0; align-self: center; }
     .clear-btn {
