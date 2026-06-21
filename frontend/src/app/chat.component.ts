@@ -104,7 +104,15 @@ import { InputAreaComponent } from './input-area/input-area.component';
     .main-panel { position: relative; flex: 1; display: flex; flex-direction: column; align-items: center; overflow: hidden; }
     .mobile-header { display: none; }
     .hamburger { background: none; border: none; font-size: 22px; cursor: pointer; color: #18181b; }
-    .content-col { width: 100%; max-width: 768px; display: flex; flex-direction: column; height: 100%; padding: 0 16px; }
+    .content-col { 
+      width: 100%; 
+      max-width: 768px; 
+      display: flex; 
+      flex-direction: 
+      column; height: 100%; 
+      padding: 0 16px; 
+    }
+    .app-shell:not(.widget-mode) .content-col { margin-right: 30px; }
     .input-row { display: flex; align-items: flex-end; gap: 8px; }
     .input-row app-input-area { flex: 1; min-width: 0; }
     .input-row .clear-btn { flex-shrink: 0; align-self: center; }
@@ -120,9 +128,9 @@ import { InputAreaComponent } from './input-area/input-area.component';
       box-shadow: inset 0 1px 0 rgba(255,255,255,0.9), inset 0 -1px 2px rgba(0,0,0,0.15), 0 1px 2px rgba(0,0,0,0.25);
       text-shadow: 0 1px 0 rgba(255,255,255,0.7);
       transition: box-shadow 0.1s ease, background 0.1s ease;
-      margin-bottom: 12px;
+      margin-bottom: 14px;
     }
-    .clear-btn:hover:not(:disabled) { background: linear-gradient(180deg, #ffffff 0%, #ededf1 45%, #d2d2d9 55%, #e0e0e6 100%); }
+    .app-shell:not(.widget-mode) .clear-btn { margin-right: 30px; }
     .clear-btn:active:not(:disabled) {
       background: linear-gradient(180deg, #c9c9d0 0%, #d8d8de 55%, #e6e6ea 100%);
       box-shadow: inset 0 2px 3px rgba(0,0,0,0.25), 0 1px 1px rgba(0,0,0,0.15);
